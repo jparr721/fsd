@@ -28,3 +28,4 @@ bin/fsd/*
 !bin/fsd/.gitkeep
 testdir/*
 !testdir/.gitkeep
+fsd.db
