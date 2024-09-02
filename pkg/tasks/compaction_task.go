@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fsd/pkg/ipc"
 	"time"
 
@@ -11,6 +12,28 @@ import (
 
 // COMPACTION_INTERVAL is the time between compaction runs
 const COMPACTION_INTERVAL = 1 * time.Minute
+
+type CompactionMessage struct {
+	Name      string    `json:"compaction_event_name"`
+	Operation ipc.FsdOp `json:"compaction_event_operation"`
+}
+
+func (m CompactionMessage) String() (string, error) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "", err
+	}
+
+	return string(b), nil
+}
+
+func (m CompactionMessage) EventName() string {
+	return m.Name
+}
+
+func (m CompactionMessage) EventOperation() ipc.FsdOp {
+	return m.Operation
+}
 
 type CompactionTaskState struct {
 	// rootPath is the root path that we're watching
@@ -27,7 +50,7 @@ type CompactionTaskState struct {
 }
 
 func NewCompactionTaskState(rootPath string, broadcaster *ipc.Broadcaster, broadcastChannel chan ipc.Message) *CompactionTaskState {
-	db, err := sql.Open("sqlite3", METADATA_DB_FILENAME)
+	db, err := sql.Open("sqlite3", FSD_DB_FILENAME)
 	if err != nil {
 		zap.L().Fatal("failed to open sqlite database", zap.Error(err))
 	}
@@ -79,39 +102,25 @@ func NewCompactionTask(state *CompactionTaskState) *CompactionTask {
 // compactStaleRecords deletes stale records. This is *not* compaction as is found in
 // systems like [rocksdb](https://github.com/facebook/rocksdb/wiki/Compaction), but
 // it eventually will support more comprehensive operations once the need arises.
-func (ct *CompactionTask) compactStaleRecords(ctx context.Context) {
-	thresh := time.Now().Add(-METADATA_UPDATE_INTERVAL)
-	query := `
-		DELETE FROM metadata WHERE created_at < ?
-	`
-
-	// Nuke the old data
-	result, err := ct.state.db.ExecContext(ctx, query, thresh)
-	if err != nil {
-		zap.L().Error("compaction operation failed", zap.Error(err))
-		return
-	}
-
-	// Report how many rows were affected
-	rowsDeleted, err := result.RowsAffected()
-	if err != nil {
-		zap.L().Error("failed to recover changed rows", zap.Error(err))
-	} else {
-		zap.L().Info("deleted old records", zap.Int64("rows deleted", rowsDeleted))
-	}
+func (ct *CompactionTask) compactStaleRecords() {
+	// Broadcast a compaction message over the shared channel
+	ct.state.broadcaster.Broadcast(CompactionMessage{
+		Name:      "CompactNow",
+		Operation: ipc.Compact,
+	})
 }
 
 func (ct *CompactionTask) StartEventLoop(ctx context.Context) {
 	for {
 		select {
 		case event := <-ct.state.BroadcastChannel():
-			if err := ct.HandlMessage(event); err != nil {
+			if err := ct.HandleMessage(ctx, event); err != nil {
 				zap.L().Error("error handling message", zap.String("task name", CompactionTaskName()), zap.Error(err))
 			}
 		case <-time.After(COMPACTION_INTERVAL):
 			zap.L().Info("beginning compaction operation")
 			// We do this as a blocking operation since it's already off the main thread.
-			ct.compactStaleRecords(ctx)
+			ct.compactStaleRecords()
 		case <-ctx.Done():
 			zap.L().Info("got shutdown signal, exiting", zap.String("task name", CompactionTaskName()))
 			return
@@ -120,7 +129,7 @@ func (ct *CompactionTask) StartEventLoop(ctx context.Context) {
 }
 
 // HandleMessage handles a network message
-func (ct *CompactionTask) HandlMessage(msg ipc.Message) error {
+func (ct *CompactionTask) HandleMessage(ctx context.Context, msg ipc.Message) error {
 	ms, err := msg.String()
 	if err != nil {
 		zap.L().Error("received invalid message", zap.Error(err))

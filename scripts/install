@@ -1,0 +1,45 @@
+#!/bin/bash
+
+set -euox pipefail
+
+# Ensure script is executed from the 'fsd' directory
+if [ "${PWD##*/}" != "fsd" ]; then
+    echo "Error: This script must be run from the 'fsd' directory."
+    exit 1
+fi
+
+# Variables
+PROJECT_DIR=$(pwd)
+SYSTEMD_SERVICE_SRC="$PROJECT_DIR/etc/linux-systemd/system/fsd.service"
+SYSTEMD_SERVICE_DEST="/etc/systemd/system/fsd.service"
+INSTALL_DIR="/usr/bin/fsd"
+BUILD_DIR="$PROJECT_DIR/bin/fsd"
+
+# Step 1: Build the Go executable
+echo "Building the Go executable"
+go build -o "$BUILD_DIR/fsd" cmd/fsd/main.go
+
+if [ $? -ne 0 ]; then
+    echo "Build failed. Exiting."
+    exit 1
+fi
+
+# Step 2: Create the installation directory if it doesn't exist
+echo "Creating installation directory"
+sudo mkdir -p "$INSTALL_DIR"
+
+# Step 3: Move the built executable to the installation directory
+echo "Moving the executable to $INSTALL_DIR"
+sudo mv "$BUILD_DIR/fsd" "$INSTALL_DIR/"
+
+# Step 4: Move the systemd service file to the proper location
+echo "Moving the systemd service file to $SYSTEMD_SERVICE_DEST"
+sudo mv "$SYSTEMD_SERVICE_SRC" "$SYSTEMD_SERVICE_DEST"
+
+# Step 5: Reload systemd, enable and start the service
+echo "Reloading systemd, enabling, and starting the fsd service"
+sudo systemctl daemon-reload
+sudo systemctl enable fsd.service
+sudo systemctl start fsd.service
+
+echo "Installation complete."

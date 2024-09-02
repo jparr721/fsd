@@ -15,8 +15,6 @@ import (
 	"go.uber.org/zap"
 )
 
-const METADATA_DB_FILENAME string = "fsd.db"
-
 // METADATA_CREATE creates the metadata database table
 const METADATA_CREATE string = `
 	CREATE TABLE IF NOT EXISTS metadata (
@@ -34,8 +32,8 @@ const METADATA_CREATE string = `
 const METADATA_UPDATE_INTERVAL = 500 * time.Millisecond
 
 type MetadataMessage struct {
-	Name      string `json:"event_name"`
-	Operation string `json:"event_operation"`
+	Name      string    `json:"event_name"`
+	Operation ipc.FsdOp `json:"event_operation"`
 }
 
 func (m MetadataMessage) String() (string, error) {
@@ -51,7 +49,7 @@ func (m MetadataMessage) EventName() string {
 	return m.Name
 }
 
-func (m MetadataMessage) EventOperation() string {
+func (m MetadataMessage) EventOperation() ipc.FsdOp {
 	return m.Operation
 }
 
@@ -73,7 +71,7 @@ type MetadataTaskState struct {
 }
 
 func NewMetadataTaskState(rootPath string, broadcaster *ipc.Broadcaster, broadcastChannel chan ipc.Message, watcher *fsnotify.Watcher) *MetadataTaskState {
-	db, err := sql.Open("sqlite3", METADATA_DB_FILENAME)
+	db, err := sql.Open("sqlite3", FSD_DB_FILENAME)
 	if err != nil {
 		zap.L().Fatal("failed to open sqlite database", zap.Error(err))
 	}
@@ -128,10 +126,32 @@ func (mt *MetadataTask) startMetadataUpdateTask(ctx context.Context) {
 			zap.L().Info("got shutdown signal, exiting", zap.String("task name", fmt.Sprintf("%s-%s", MetadataTaskName(), "UpdateTask")))
 			return
 		case <-time.After(METADATA_UPDATE_INTERVAL):
-			zap.L().Debug("updating file metadata")
+			// zap.L().Debug("updating file metadata")
 			go mt.recursivelyUpdateMetadata(ctx)
 		}
 	}
+}
+
+func (mt *MetadataTask) doCompaction(ctx context.Context) error {
+	thresh := time.Now().Add(-METADATA_UPDATE_INTERVAL)
+	query := `
+		DELETE FROM metadata WHERE created_at < ?
+	`
+
+	// Nuke the old data
+	result, err := mt.state.db.ExecContext(ctx, query, thresh)
+	if err != nil {
+		return err
+	}
+
+	// Report how many rows were affected
+	rowsDeleted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	zap.L().Info("deleted old records", zap.String("table name", "metadata"), zap.Int64("rows deleted", rowsDeleted))
+	return nil
 }
 
 // recursivelyUpdateMetadata runs as a goroutine and starts from `mt.rootPath` and walks through all
@@ -149,7 +169,7 @@ func (mt *MetadataTask) recursivelyUpdateMetadata(ctx context.Context) {
 	default:
 		tx, err := mt.state.db.BeginTx(ctx, nil)
 		if err != nil {
-			zap.L().Error("failed to begin transaction", zap.Error(err))
+			zap.L().Error("failed to begin transaction", zap.String("task name", MetadataTaskName()), zap.Error(err))
 			return
 		}
 
@@ -159,7 +179,7 @@ func (mt *MetadataTask) recursivelyUpdateMetadata(ctx context.Context) {
 		`)
 		if err != nil {
 			tx.Rollback()
-			zap.L().Error("failed to prepare insert statement", zap.Error(err))
+			zap.L().Error("failed to prepare insert statement", zap.String("task name", MetadataTaskName()), zap.Error(err))
 		}
 		defer stmt.Close()
 
@@ -201,7 +221,7 @@ func (mt *MetadataTask) recursivelyUpdateMetadata(ctx context.Context) {
 			return
 		}
 
-		zap.L().Debug("metadata update successful")
+		// zap.L().Debug("metadata update successful")
 
 		return
 	}
@@ -214,7 +234,7 @@ func (mt *MetadataTask) StartEventLoop(ctx context.Context) {
 	for {
 		select {
 		case event := <-mt.state.BroadcastChannel():
-			if err := mt.HandlMessage(event); err != nil {
+			if err := mt.HandleMessage(ctx, event); err != nil {
 				zap.L().Error("error handling message", zap.String("task name", MetadataTaskName()), zap.Error(err))
 			}
 		case <-ctx.Done():
@@ -225,7 +245,7 @@ func (mt *MetadataTask) StartEventLoop(ctx context.Context) {
 }
 
 // HandleMessage handles a network message
-func (mt *MetadataTask) HandlMessage(msg ipc.Message) error {
+func (mt *MetadataTask) HandleMessage(ctx context.Context, msg ipc.Message) error {
 	ms, err := msg.String()
 	if err != nil {
 		zap.L().Error("received invalid message", zap.Error(err))
@@ -239,6 +259,8 @@ func (mt *MetadataTask) HandlMessage(msg ipc.Message) error {
 	case ipc.Remove:
 	case ipc.Rename:
 	case ipc.Write:
+	case ipc.Compact:
+		return mt.doCompaction(ctx)
 	}
 
 	return nil

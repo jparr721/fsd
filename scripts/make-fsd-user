@@ -1,0 +1,20 @@
+#!/bin/bash
+
+set -euox pipefail
+
+# Prompt for the password
+echo "Enter the password for fsduser:"
+read -s PASSWORD
+
+# Create the user without a home directory, in the nogroup group
+useradd -M -s /bin/false fsduser
+
+# Set the password for fsduser
+echo "fsduser:$PASSWORD" | chpasswd
+
+# Grant read/write permissions to /etc, /var, and /tmp for fsduser
+setfacl -m u:fsduser:rwX /etc
+setfacl -m u:fsduser:rwX /var
+setfacl -m u:fsduser:rwX /tmp
+
+echo "User fsduser has been created and given read/write access to /etc, /var, and /tmp."

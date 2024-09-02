@@ -21,7 +21,7 @@ type Task interface {
 	StartEventLoop(ctx context.Context)
 
 	// HandleMessage handles a network message
-	HandlMessage(msg ipc.Message) error
+	HandleMessage(ctx context.Context, msg ipc.Message) error
 
 	// SendMessage sends a message over the network
 	SendMessage(msg ipc.Message) error

@@ -25,6 +25,9 @@ const (
 
 	// An invalid operation was given
 	Invalid
+
+	// A compaction operation needs to happen
+	Compact
 )
 
 func (o FsdOp) String() string {
@@ -39,6 +42,8 @@ func (o FsdOp) String() string {
 		return "Rename"
 	case Write:
 		return "Write"
+	case Compact:
+		return "Compact"
 	default:
 		return "InvalidOperation"
 	}
