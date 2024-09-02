@@ -49,6 +49,28 @@ func processEventStream(ctx context.Context, watcher *fsnotify.Watcher, broadcas
 	}
 }
 
+func logger(l *zap.Logger) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		fn := func(w http.ResponseWriter, r *http.Request) {
+			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+			t1 := time.Now()
+			defer func() {
+				l.Info("Served",
+					zap.String("proto", r.Proto),
+					zap.String("path", r.URL.Path),
+					zap.Duration("lat", time.Since(t1)),
+					zap.Int("status", ww.Status()),
+					zap.Int("size", ww.BytesWritten()),
+					zap.String("reqId", middleware.GetReqID(r.Context())))
+			}()
+
+			next.ServeHTTP(ww, r)
+		}
+		return http.HandlerFunc(fn)
+	}
+}
+
 func main() {
 	zap.L().Info("Starting up")
 	watcher, err := fsnotify.NewWatcher()
@@ -86,7 +108,7 @@ func main() {
 
 	// Spin up the web server
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
+	r.Use(logger(zap.L()))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
