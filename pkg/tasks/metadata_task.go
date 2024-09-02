@@ -26,8 +26,7 @@ const METADATA_CREATE string = `
 		file_mode INTEGER NOT NULL,
 		is_directory INTEGER NOT NULL,
 		created_at DATETIME NOT NULL,
-		modified_at DATETIME NOT NULL,
-		is_deleted INTEGER NOT NULL DEFAULT 0
+		modified_at DATETIME NOT NULL
 	)
 `
 
@@ -155,8 +154,8 @@ func (mt *MetadataTask) recursivelyUpdateMetadata(ctx context.Context) {
 		}
 
 		stmt, err := tx.Prepare(`
-			INSERT INTO metadata (full_path, size_bytes, file_mode, is_directory, created_at, modified_at, is_deleted)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO metadata (full_path, size_bytes, file_mode, is_directory, created_at, modified_at)
+			VALUES (?, ?, ?, ?, ?, ?)
 		`)
 		if err != nil {
 			tx.Rollback()
@@ -183,7 +182,6 @@ func (mt *MetadataTask) recursivelyUpdateMetadata(ctx context.Context) {
 				isDirectory,
 				time.Now(),
 				info.ModTime(),
-				0,
 			)
 
 			if err != nil {
@@ -203,7 +201,7 @@ func (mt *MetadataTask) recursivelyUpdateMetadata(ctx context.Context) {
 			return
 		}
 
-		zap.L().Info("metadata update successful")
+		zap.L().Debug("metadata update successful")
 
 		return
 	}

@@ -32,6 +32,10 @@ func (t *TaskRegistry) Init(rootPath string, broadcaster *ipc.Broadcaster, watch
 			taskState := NewMetadataTaskState(rootPath, broadcaster, taskChan, watcher)
 			task := NewMetadataTask(taskState)
 			t.tasks[MetadataTaskName()] = task
+		case CompactionTaskName():
+			taskState := NewCompactionTaskState(rootPath, broadcaster, taskChan)
+			task := NewCompactionTask(taskState)
+			t.tasks[CompactionTaskName()] = task
 		}
 	}
 }
