@@ -1,11 +1,9 @@
 [Unit]
-Description=fsd - An Open Source File System Daemon
-Documentation=man:fsd(1)
+Description=fsd - An Open Source File System Daemon for fsduser
 After=network.target
 
 [Service]
 User=fsduser
-Group=nogroup
 ExecStart=/usr/local/bin/fsd
 Restart=on-failure
 RestartSec=1

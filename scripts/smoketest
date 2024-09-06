@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+
+import os
+import random
+import string
+import time
+from typing import List, Tuple, Dict, Any
+import requests
+import shutil
+
+# Configuration
+BASE_URL: str = "http://localhost:16000"
+WATCH_DIR: str = "/tmp/fsd"
+NUM_FILES: int = 10
+NUM_FOLDERS: int = 5
+
+
+def random_string(length: int) -> str:
+    """Generate a random string of specified length."""
+    return "".join(random.choices(string.ascii_letters + string.digits, k=length))
+
+
+def create_random_file(path: str) -> None:
+    """Create a file at the given path with random content."""
+    with open(path, "w") as f:
+        f.write(random_string(random.randint(10, 100)))
+
+
+def create_random_structure() -> Tuple[List[str], List[str]]:
+    """
+    Create a random structure of files and folders.
+
+    Returns:
+    - files: List of created file paths
+    - folders: List of created folder paths
+    """
+    files: List[str] = []
+    folders: List[str] = []
+
+    # Create random folders
+    for _ in range(NUM_FOLDERS):
+        folder_name: str = random_string(8)
+        folder_path: str = os.path.join(WATCH_DIR, folder_name)
+        os.makedirs(folder_path)
+        folders.append(folder_path)
+
+    # Create random files in random locations (including root WATCH_DIR)
+    for _ in range(NUM_FILES):
+        file_name: str = random_string(8) + ".txt"
+        file_path: str = os.path.join(random.choice([WATCH_DIR] + folders), file_name)
+        create_random_file(file_path)
+        files.append(file_path)
+
+    return files, folders
+
+
+def get_metadata() -> List[Dict[str, Any]]:
+    """Fetch metadata from the API."""
+    response: requests.Response = requests.get(f"{BASE_URL}/metadata/latest")
+    if response.status_code != 200:
+        raise Exception(f"Failed to get metadata: {response.status_code}")
+    return response.json()
+
+
+def verify_metadata(expected_files: List[str], expected_folders: List[str]) -> None:
+    """
+    Verify that all expected files and folders are present in the metadata.
+
+    Raises an exception if any expected items are missing.
+    """
+    metadata: List[Dict[str, Any]] = get_metadata()
+    metadata_paths: set = set(item["full_path"] for item in metadata)
+
+    all_expected: set = set(expected_files + expected_folders)
+
+    if not all_expected.issubset(metadata_paths):
+        missing: set = all_expected - metadata_paths
+        raise Exception(f"Missing metadata for: {missing}")
+
+    print("All expected files and folders found in metadata.")
+
+
+def delete_random_files(files: List[str], num_to_delete: int) -> List[str]:
+    """
+    Delete a random subset of files.
+
+    Returns:
+    - List of remaining files
+    """
+    to_delete: List[str] = random.sample(files, num_to_delete)
+    for file_path in to_delete:
+        os.remove(file_path)
+    return [f for f in files if f not in to_delete]
+
+
+def main() -> None:
+    for i in range(10):  # Run the test 10 times
+        # Ensure WATCH_DIR exists
+        os.makedirs(WATCH_DIR, exist_ok=True)
+
+        print("Creating random file structure")
+        files, folders = create_random_structure()
+
+        print("Waiting for metadata to be updated")
+        time.sleep(1)  # Wait for the daemon to update metadata
+
+        print("Verifying initial metadata")
+        verify_metadata(files, folders)
+
+        print("Deleting some random files")
+        num_to_delete: int = len(files) // 2
+        remaining_files: List[str] = delete_random_files(files, num_to_delete)
+
+        print("Waiting for metadata to be updated after deletions")
+        time.sleep(1)  # Wait for the daemon to update metadata
+
+        print("Verifying metadata after deletions")
+        verify_metadata(remaining_files, folders)
+
+        print("Smoke test completed successfully!")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        print(f"Smoke test failed: {e}")
+    finally:
+        # Clean up the contents of the watch directory
+        for item in os.listdir(WATCH_DIR):
+            item_path: str = os.path.join(WATCH_DIR, item)
+            if os.path.isfile(item_path) or os.path.islink(item_path):
+                os.unlink(item_path)
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+        print(f"Cleaned up contents of {WATCH_DIR}")

@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"fsd/internal/config"
 	"fsd/internal/routes"
 	"fsd/pkg/ipc"
 	"fsd/pkg/tasks"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -23,6 +25,8 @@ func init() {
 	// TODO: Change this later.
 	logger := zap.Must(zap.NewDevelopment())
 	zap.ReplaceGlobals(logger)
+
+	config.InitConfig()
 }
 
 func processEventStream(ctx context.Context, watcher *fsnotify.Watcher, broadcaster *ipc.Broadcaster) {
@@ -79,7 +83,23 @@ func main() {
 	}
 	defer watcher.Close()
 
-	rootPath := "testdir"
+	rootPath := config.GetConfig().WatchDir
+
+	// If `rootPath` is not absolute, make it absolute
+	if !filepath.IsAbs(rootPath) {
+		rootPath, err = filepath.Abs(rootPath)
+		if err != nil {
+			zap.L().Fatal("failed to get absolute path for root path", zap.String("path", rootPath), zap.Error(err))
+		}
+	}
+
+	// If `rootPath` does not exist, create it
+	if _, err := os.Stat(rootPath); os.IsNotExist(err) {
+		zap.L().Info("root path does not exist, creating", zap.String("path", rootPath))
+		if err := os.MkdirAll(rootPath, 0755); err != nil {
+			zap.L().Fatal("failed to create root directory", zap.String("path", rootPath), zap.Error(err))
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -93,6 +113,7 @@ func main() {
 		tasks.FsTaskName(),
 		tasks.MetadataTaskName(),
 		tasks.CompactionTaskName(),
+		tasks.ProcTaskName(),
 	)
 	registry.Run(ctx)
 
@@ -108,11 +129,11 @@ func main() {
 
 	// Spin up the web server
 	r := chi.NewRouter()
-	r.Use(logger(zap.L()))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.URLFormat)
+	r.Use(logger(zap.L()))
 	r.Use(render.SetContentType(render.ContentTypeJSON))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"https://*", "http://*"},
@@ -125,7 +146,7 @@ func main() {
 	r.Route("/", routes.MakeRouter)
 
 	httpServer := &http.Server{
-		Addr:    ":16000",
+		Addr:    config.GetConfig().ListenAddr,
 		Handler: r,
 	}
 

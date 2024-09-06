@@ -7,7 +7,7 @@ echo "Enter the password for fsduser:"
 read -s PASSWORD
 
 # Create the user without a home directory, in the nogroup group
-useradd -M -s /bin/false fsduser
+useradd -m fsduser
 
 # Set the password for fsduser
 echo "fsduser:$PASSWORD" | chpasswd

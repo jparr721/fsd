@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"fsd/internal/config"
 	"fsd/pkg/ipc"
 	"io/fs"
 	"path/filepath"
@@ -27,9 +28,6 @@ const METADATA_CREATE string = `
 		modified_at DATETIME NOT NULL
 	)
 `
-
-// METADATA_UPDATE_INTERVAL is how often we update the metadata for all of the files
-const METADATA_UPDATE_INTERVAL = 500 * time.Millisecond
 
 type MetadataMessage struct {
 	Name      string    `json:"event_name"`
@@ -125,15 +123,14 @@ func (mt *MetadataTask) startMetadataUpdateTask(ctx context.Context) {
 		case <-ctx.Done():
 			zap.L().Info("got shutdown signal, exiting", zap.String("task name", fmt.Sprintf("%s-%s", MetadataTaskName(), "UpdateTask")))
 			return
-		case <-time.After(METADATA_UPDATE_INTERVAL):
-			// zap.L().Debug("updating file metadata")
+		case <-time.After(config.GetConfig().MetadataUpdateInterval):
 			go mt.recursivelyUpdateMetadata(ctx)
 		}
 	}
 }
 
 func (mt *MetadataTask) doCompaction(ctx context.Context) error {
-	thresh := time.Now().Add(-METADATA_UPDATE_INTERVAL)
+	thresh := time.Now().Add(-config.GetConfig().CompactionInterval)
 	query := `
 		DELETE FROM metadata WHERE created_at < ?
 	`
@@ -161,9 +158,9 @@ func (mt *MetadataTask) recursivelyUpdateMetadata(ctx context.Context) {
 	case <-ctx.Done():
 		zap.L().Info("got shutdown signal, exiting", zap.String("task name", fmt.Sprintf("%s-%s-%s", MetadataTaskName(), "UpdateTask", "UpdateMetadataOperation")))
 		return
-	case <-time.After(METADATA_UPDATE_INTERVAL):
+	case <-time.After(config.GetConfig().MetadataUpdateInterval):
 		zap.L().Error("metadata update overlap!")
-	case <-time.After(2 * METADATA_UPDATE_INTERVAL):
+	case <-time.After(2 * config.GetConfig().MetadataUpdateInterval):
 		zap.L().Error("still delayed updating, killing task")
 		return
 	default:
@@ -255,8 +252,9 @@ func (mt *MetadataTask) HandleMessage(ctx context.Context, msg ipc.Message) erro
 
 	switch msg.EventOperation() {
 	case ipc.Create:
-		return mt.CreateMetadataEntry(msg.EventName())
+		return mt.CreateMetadataEntry(ctx, msg.EventName())
 	case ipc.Remove:
+		return mt.RemoveMetadataEntry(ctx, msg.EventName())
 	case ipc.Rename:
 	case ipc.Write:
 	case ipc.Compact:
@@ -277,7 +275,7 @@ func (mt *MetadataTask) SendMessage(msg ipc.Message) error {
 	return nil
 }
 
-func (mt *MetadataTask) CreateMetadataEntry(name string) error {
+func (mt *MetadataTask) CreateMetadataEntry(ctx context.Context, name string) error {
 	zap.L().Debug("Creating metadata entry", zap.String("name", name))
 	// Walk the directory, adding watches for all subdirectories
 	err := filepath.Walk(name, func(path string, info fs.FileInfo, err error) error {
@@ -296,6 +294,21 @@ func (mt *MetadataTask) CreateMetadataEntry(name string) error {
 		return nil
 	})
 
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (mt *MetadataTask) RemoveMetadataEntry(ctx context.Context, name string) error {
+	zap.L().Debug("Removing metadata entry", zap.String("name", name))
+
+	query := `
+		DELETE FROM metadata WHERE full_path = ?
+	`
+
+	_, err := mt.state.db.ExecContext(ctx, query, name)
 	if err != nil {
 		return err
 	}

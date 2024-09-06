@@ -1,14 +1,12 @@
 package ipc
 
 import (
+	"fsd/internal/config"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 )
-
-// The max number of messages to enqueue
-const BUFFER_DEPTH = 1000
 
 // Maps the broadcast channel to the identifier.
 type SubscriberMap map[chan Message]string
@@ -27,7 +25,7 @@ func NewBroadcaster() *Broadcaster {
 // Subscribe adds a new subscriber channel to the broadcaster which can
 // listen for any message type
 func (b *Broadcaster) Subscribe(identifier string) chan Message {
-	ch := make(chan Message, BUFFER_DEPTH)
+	ch := make(chan Message, config.GetConfig().BroadcastBufferDepth)
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	b.subscribers[ch] = identifier

@@ -36,6 +36,10 @@ func (t *TaskRegistry) Init(rootPath string, broadcaster *ipc.Broadcaster, watch
 			taskState := NewCompactionTaskState(rootPath, broadcaster, taskChan)
 			task := NewCompactionTask(taskState)
 			t.tasks[CompactionTaskName()] = task
+		case ProcTaskName():
+			taskState := NewProcTaskState(rootPath, broadcaster, taskChan)
+			task := NewProcTask(taskState)
+			t.tasks[ProcTaskName()] = task
 		}
 	}
 }
