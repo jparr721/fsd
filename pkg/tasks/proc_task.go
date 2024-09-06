@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fsd/pkg/ipc"
+	"io"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -53,6 +55,11 @@ func NewProcTaskState(rootPath string, broadcaster *ipc.Broadcaster, broadcastCh
 	_, err = db.Exec(PROC_CREATE)
 	if err != nil {
 		zap.L().Fatal("failed to create proc table", zap.Error(err))
+	}
+
+	_, err = db.Exec(PROC_RESULTS_CREATE)
+	if err != nil {
+		zap.L().Fatal("failed to create proc_results table", zap.Error(err))
 	}
 
 	return &ProcTaskState{
@@ -149,7 +156,6 @@ func (p *ProcTask) doTask(ctx context.Context) error {
 			stdout, stderr, err := p.executeCommand(ctx, command, strings.Split(args, " "))
 			if err != nil {
 				zap.L().Error("failed to execute command", zap.Error(err))
-				return
 			}
 
 			stmt, err := p.state.db.Prepare(`
@@ -158,13 +164,11 @@ func (p *ProcTask) doTask(ctx context.Context) error {
 
 			if err != nil {
 				zap.L().Error("failed to prepare insert statement", zap.Error(err))
-				return
 			}
 
 			_, err = stmt.Exec(id, stdout, stderr, createdAt)
 			if err != nil {
 				zap.L().Error("failed to insert into proc_results", zap.Error(err))
-				return
 			}
 
 			_, err = p.state.db.Exec(`
@@ -183,5 +187,40 @@ func (p *ProcTask) doTask(ctx context.Context) error {
 
 func (p *ProcTask) executeCommand(ctx context.Context, command string, args []string) (string, string, error) {
 	zap.L().Debug("executing command", zap.String("command", command), zap.Any("args", args))
+	cmd := exec.CommandContext(ctx, command, args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		zap.L().Error("error creating stdout pipe", zap.Error(err))
+		return "", "", err
+	}
 
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		zap.L().Error("error creating stderr pipe", zap.Error(err))
+		return "", "", err
+	}
+
+	if err := cmd.Start(); err != nil {
+		zap.L().Error("error starting command", zap.Error(err))
+		return "", "", err
+	}
+
+	output, err := io.ReadAll(stdout)
+	if err != nil {
+		zap.L().Error("error reading stdout", zap.Error(err))
+		return "", "", err
+	}
+
+	stderrOutput, err := io.ReadAll(stderr)
+	if err != nil {
+		zap.L().Error("error reading stderr", zap.Error(err))
+		return "", "", err
+	}
+
+	if err := cmd.Wait(); err != nil {
+		zap.L().Error("error waiting for command", zap.Error(err))
+		return "", "", err
+	}
+
+	return string(output), string(stderrOutput), nil
 }

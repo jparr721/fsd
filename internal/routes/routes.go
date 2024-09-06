@@ -23,5 +23,7 @@ func MakeRouter(r chi.Router) {
 		ctrl := ProcController{}
 		r.Get("/", ctrl.GetProc)
 		r.Post("/", ctrl.SubmitProc)
+		r.Get("/results", ctrl.GetProcResults)
+		r.Get("/results/{id}", ctrl.GetProcResult)
 	})
 }
