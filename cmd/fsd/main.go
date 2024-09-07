@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fsd/internal/config"
 	"fsd/internal/routes"
 	"fsd/pkg/ipc"
@@ -75,8 +76,9 @@ func logger(l *zap.Logger) func(next http.Handler) http.Handler {
 	}
 }
 
-func main() {
+func runApp() {
 	zap.L().Info("Starting up")
+	zap.L().Debug("config", zap.Any("config", config.GetConfig()))
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		zap.L().Fatal("startup failed", zap.Error(err))
@@ -175,4 +177,24 @@ func main() {
 	}
 
 	zap.L().Info("Shutting down")
+}
+
+func main() {
+	// Parse command-line flags
+	metadataUpdateInterval := flag.Duration("metadata-update-interval", config.GetConfig().MetadataUpdateInterval, "Metadata update interval")
+	compactionInterval := flag.Duration("compaction-interval", config.GetConfig().CompactionInterval, "Compaction interval")
+	broadcastBufferDepth := flag.Int("broadcast-buffer-depth", config.GetConfig().BroadcastBufferDepth, "Broadcast buffer depth")
+	listenAddr := flag.String("listen-addr", config.GetConfig().ListenAddr, "Listen address")
+	watchDir := flag.String("watch-dir", config.GetConfig().WatchDir, "Watch directory")
+	flag.Parse()
+
+	// Update config with flag values
+	cfg := config.GetConfig()
+	cfg.MetadataUpdateInterval = *metadataUpdateInterval
+	cfg.CompactionInterval = *compactionInterval
+	cfg.BroadcastBufferDepth = *broadcastBufferDepth
+	cfg.ListenAddr = *listenAddr
+	cfg.WatchDir = *watchDir
+
+	runApp()
 }

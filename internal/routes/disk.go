@@ -2,7 +2,7 @@ package routes
 
 import (
 	"database/sql"
-	"fsd/pkg/tasks"
+	"fsd/internal/config"
 	"net/http"
 	"time"
 
@@ -51,7 +51,7 @@ func RowsToDiskStats(rows *sql.Rows) ([]Disk, error) {
 }
 
 func (d *DiskController) GetDiskStats(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", tasks.FSD_DB_FILENAME)
+	db, err := sql.Open("sqlite3", config.GetDBPath())
 	if err != nil {
 		zap.L().Error("failed to open disk stats database connection", zap.Error(err))
 		render.Status(r, http.StatusInternalServerError)
@@ -80,7 +80,7 @@ func (d *DiskController) GetDiskStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *DiskController) GetLatestDiskStats(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", tasks.FSD_DB_FILENAME)
+	db, err := sql.Open("sqlite3", config.GetDBPath())
 	if err != nil {
 		zap.L().Error("failed to open disk stats database connection", zap.Error(err))
 		render.Status(r, http.StatusInternalServerError)

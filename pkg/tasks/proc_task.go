@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"database/sql"
+	"fsd/internal/config"
 	"fsd/pkg/ipc"
 	"io"
 	"os/exec"
@@ -47,7 +48,7 @@ type ProcTaskState struct {
 }
 
 func NewProcTaskState(rootPath string, broadcaster *ipc.Broadcaster, broadcastChannel chan ipc.Message) *ProcTaskState {
-	db, err := sql.Open("sqlite3", FSD_DB_FILENAME)
+	db, err := sql.Open("sqlite3", config.GetDBPath())
 	if err != nil {
 		zap.L().Fatal("failed to open sqlite database", zap.Error(err))
 	}

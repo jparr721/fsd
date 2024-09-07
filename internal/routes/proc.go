@@ -3,7 +3,7 @@ package routes
 import (
 	"database/sql"
 	"errors"
-	"fsd/pkg/tasks"
+	"fsd/internal/config"
 	"net/http"
 	"strings"
 	"time"
@@ -44,7 +44,7 @@ func (p *ProcSubmitRequest) Bind(r *http.Request) error {
 }
 
 func (p *ProcController) GetProc(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", tasks.FSD_DB_FILENAME)
+	db, err := sql.Open("sqlite3", config.GetDBPath())
 	if err != nil {
 		zap.L().Error("failed to open proc database connection", zap.Error(err))
 		render.Status(r, http.StatusInternalServerError)
@@ -87,7 +87,7 @@ func (p *ProcController) GetProc(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *ProcController) SubmitProc(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", tasks.FSD_DB_FILENAME)
+	db, err := sql.Open("sqlite3", config.GetDBPath())
 	if err != nil {
 		zap.L().Error("failed to open proc database connection", zap.Error(err))
 		render.Status(r, http.StatusInternalServerError)
@@ -135,7 +135,7 @@ func (p *ProcController) SubmitProc(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *ProcController) GetProcResults(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", tasks.FSD_DB_FILENAME)
+	db, err := sql.Open("sqlite3", config.GetDBPath())
 	if err != nil {
 		zap.L().Error("failed to open proc database connection", zap.Error(err))
 		render.Status(r, http.StatusInternalServerError)
@@ -178,7 +178,7 @@ func (p *ProcController) GetProcResults(w http.ResponseWriter, r *http.Request) 
 }
 
 func (p *ProcController) GetProcResult(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", tasks.FSD_DB_FILENAME)
+	db, err := sql.Open("sqlite3", config.GetDBPath())
 	if err != nil {
 		zap.L().Error("failed to open proc database connection", zap.Error(err))
 		render.Status(r, http.StatusInternalServerError)

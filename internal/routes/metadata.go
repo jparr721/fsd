@@ -2,7 +2,7 @@ package routes
 
 import (
 	"database/sql"
-	"fsd/pkg/tasks"
+	"fsd/internal/config"
 	"net/http"
 	"time"
 
@@ -50,7 +50,7 @@ func RowsToMetadata(rows *sql.Rows) ([]Metadata, error) {
 }
 
 func (m *MetadataController) GetMetadata(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", tasks.FSD_DB_FILENAME)
+	db, err := sql.Open("sqlite3", config.GetDBPath())
 	if err != nil {
 		zap.L().Error("failed to open metadata database connection", zap.Error(err))
 		render.Status(r, http.StatusInternalServerError)
@@ -85,7 +85,7 @@ func (m *MetadataController) GetMetadata(w http.ResponseWriter, r *http.Request)
 }
 
 func (m *MetadataController) GetLatestMetadata(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", tasks.FSD_DB_FILENAME)
+	db, err := sql.Open("sqlite3", config.GetDBPath())
 	if err != nil {
 		zap.L().Error("failed to open metadata database connection", zap.Error(err))
 		render.Status(r, http.StatusInternalServerError)

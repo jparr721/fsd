@@ -98,3 +98,12 @@ func loadConfig() *Config {
 	// Return the successfully loaded configuration
 	return &config
 }
+
+func GetDBPath() string {
+	currentUser, err := user.Current()
+	if err != nil {
+		zap.L().Fatal("failed to get current user", zap.Error(err))
+	}
+
+	return filepath.Join(currentUser.HomeDir, ".fsd", "fsd.db")
+}

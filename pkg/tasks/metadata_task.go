@@ -69,7 +69,7 @@ type MetadataTaskState struct {
 }
 
 func NewMetadataTaskState(rootPath string, broadcaster *ipc.Broadcaster, broadcastChannel chan ipc.Message, watcher *fsnotify.Watcher) *MetadataTaskState {
-	db, err := sql.Open("sqlite3", FSD_DB_FILENAME)
+	db, err := sql.Open("sqlite3", config.GetDBPath())
 	if err != nil {
 		zap.L().Fatal("failed to open sqlite database", zap.Error(err))
 	}
