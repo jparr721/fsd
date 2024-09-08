@@ -159,7 +159,7 @@ func (fs *FsTask) StartEventLoop(ctx context.Context) {
 			if err := fs.HandleMessage(ctx, event); err != nil {
 				zap.L().Error("error handling message", zap.String("task name", FsTaskName()), zap.Error(err))
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(config.GetConfig().DiskStatsUpdateInterval):
 			if err := fs.RecomputeDiskStatistics(ctx); err != nil {
 				zap.L().Error("error computing disk stats", zap.String("task name", FsTaskName()), zap.Error(err))
 			}

@@ -11,9 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// COMPACTION_INTERVAL is the time between compaction runs
-const COMPACTION_INTERVAL = 1 * time.Minute
-
 type CompactionMessage struct {
 	Name      string    `json:"compaction_event_name"`
 	Operation ipc.FsdOp `json:"compaction_event_operation"`
@@ -118,7 +115,7 @@ func (ct *CompactionTask) StartEventLoop(ctx context.Context) {
 			if err := ct.HandleMessage(ctx, event); err != nil {
 				zap.L().Error("error handling message", zap.String("task name", CompactionTaskName()), zap.Error(err))
 			}
-		case <-time.After(COMPACTION_INTERVAL):
+		case <-time.After(config.GetConfig().CompactionInterval):
 			zap.L().Info("beginning compaction operation")
 			// We do this as a blocking operation since it's already off the main thread.
 			ct.compactStaleRecords()

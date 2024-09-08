@@ -13,11 +13,12 @@ import (
 )
 
 type Config struct {
-	MetadataUpdateInterval time.Duration `toml:"metadata_update_interval"`
-	CompactionInterval     time.Duration `toml:"compaction_interval"`
-	BroadcastBufferDepth   int           `toml:"broadcast_buffer_depth"`
-	ListenAddr             string        `toml:"listen_addr"`
-	WatchDir               string        `toml:"watch_dir"`
+	MetadataUpdateInterval  time.Duration `toml:"metadata_update_interval"`
+	CompactionInterval      time.Duration `toml:"compaction_interval"`
+	DiskStatsUpdateInterval time.Duration `toml:"disk_stats_update_interval"`
+	BroadcastBufferDepth    int           `toml:"broadcast_buffer_depth"`
+	ListenAddr              string        `toml:"listen_addr"`
+	WatchDir                string        `toml:"watch_dir"`
 }
 
 var (
@@ -26,11 +27,12 @@ var (
 )
 
 var DEFAULT_CONFIG = Config{
-	MetadataUpdateInterval: 500 * time.Millisecond,
-	CompactionInterval:     1 * time.Minute,
-	BroadcastBufferDepth:   1000,
-	ListenAddr:             "localhost:16000",
-	WatchDir:               "/tmp/fsd",
+	MetadataUpdateInterval:  500 * time.Millisecond,
+	CompactionInterval:      1 * time.Minute,
+	DiskStatsUpdateInterval: 5 * time.Second,
+	BroadcastBufferDepth:    1000,
+	ListenAddr:              "localhost:16000",
+	WatchDir:                "/tmp/fsd",
 }
 
 // InitConfig initializes the global config

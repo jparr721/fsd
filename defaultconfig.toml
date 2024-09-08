@@ -1,5 +1,6 @@
 metadata_update_interval = "500ms"
 compaction_interval = "1m0s"
+disk_stats_update_interval = "5s"
 broadcast_buffer_depth = 1000
 listen_addr = "localhost:16000"
 watch_dir = "/tmp/fsd"
