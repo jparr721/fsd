@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fsd/internal/config"
 	"fsd/internal/routes"
@@ -76,6 +77,15 @@ func logger(l *zap.Logger) func(next http.Handler) http.Handler {
 	}
 }
 
+func dbContext(db *sql.DB) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), "db", db)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 func runApp() {
 	zap.L().Info("Starting up")
 	zap.L().Debug("config", zap.Any("config", config.GetConfig()))
@@ -129,8 +139,15 @@ func runApp() {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
+	db, err := sql.Open("sqlite3", config.GetDBPath())
+	if err != nil {
+		zap.L().Fatal("failed to open database", zap.Error(err))
+	}
+	defer db.Close()
+
 	// Spin up the web server
 	r := chi.NewRouter()
+	r.Use(dbContext(db))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)

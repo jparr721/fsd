@@ -5,10 +5,13 @@ import (
 	"database/sql"
 	"fsd/internal/config"
 	"fsd/pkg/ipc"
-	"io"
 	"os/exec"
 	"strings"
 	"time"
+
+	"bytes"
+	"errors"
+	"fmt"
 
 	"go.uber.org/zap"
 )
@@ -189,39 +192,18 @@ func (p *ProcTask) doTask(ctx context.Context) error {
 func (p *ProcTask) executeCommand(ctx context.Context, command string, args []string) (string, string, error) {
 	zap.L().Debug("executing command", zap.String("command", command), zap.Any("args", args))
 	cmd := exec.CommandContext(ctx, command, args...)
-	stdout, err := cmd.StdoutPipe()
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
 	if err != nil {
-		zap.L().Error("error creating stdout pipe", zap.Error(err))
-		return "", "", err
+		// Capture the error message
+		errorMsg := fmt.Sprintf("Command failed: %v\nStderr: %s", err, stderr.String())
+		zap.L().Error("error executing command", zap.Error(errors.New(errorMsg)))
+		return stdout.String(), stderr.String(), errors.New(errorMsg)
 	}
 
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		zap.L().Error("error creating stderr pipe", zap.Error(err))
-		return "", "", err
-	}
-
-	if err := cmd.Start(); err != nil {
-		zap.L().Error("error starting command", zap.Error(err))
-		return "", "", err
-	}
-
-	output, err := io.ReadAll(stdout)
-	if err != nil {
-		zap.L().Error("error reading stdout", zap.Error(err))
-		return "", "", err
-	}
-
-	stderrOutput, err := io.ReadAll(stderr)
-	if err != nil {
-		zap.L().Error("error reading stderr", zap.Error(err))
-		return "", "", err
-	}
-
-	if err := cmd.Wait(); err != nil {
-		zap.L().Error("error waiting for command", zap.Error(err))
-		return "", "", err
-	}
-
-	return string(output), string(stderrOutput), nil
+	return stdout.String(), stderr.String(), nil
 }

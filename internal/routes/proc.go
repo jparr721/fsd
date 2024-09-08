@@ -3,8 +3,11 @@ package routes
 import (
 	"database/sql"
 	"errors"
-	"fsd/internal/config"
+	"fmt"
+	"fsd/internal/resp"
+	"fsd/procs"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,8 +26,8 @@ type Proc struct {
 }
 
 type ProcSubmitRequest struct {
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
+	Command string              `json:"command"`
+	Args    map[string][]string `json:"args"`
 }
 
 type ProcResult struct {
@@ -34,42 +37,70 @@ type ProcResult struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+var PROCS = []string{
+	procs.YtProcName(),
+}
+
+func (p *ProcSubmitRequest) bindHelper() error {
+	switch p.Command {
+	case procs.YtProcName():
+		val, ok := p.Args["url"]
+		if !ok {
+			return errors.New("url is required")
+		}
+
+		if len(val) == 0 || val[0] == "" {
+			return errors.New("non-empty url is required")
+		}
+
+		channelName, ok := p.Args["channel-name"]
+		if !ok {
+			return errors.New("channel-name is required")
+		}
+
+		if len(channelName) == 0 || channelName[0] == "" {
+			return errors.New("non-empty channel-name is required")
+		}
+
+	default:
+		return errors.New("invalid proc")
+	}
+
+	return nil
+}
+
 // Bind implements render.Binder.
 func (p *ProcSubmitRequest) Bind(r *http.Request) error {
 	if p.Command == "" {
 		return errors.New("command is required")
 	}
 
-	return nil
+	return p.bindHelper()
 }
 
-func (p *ProcController) GetProc(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", config.GetDBPath())
-	if err != nil {
-		zap.L().Error("failed to open proc database connection", zap.Error(err))
-		render.Status(r, http.StatusInternalServerError)
-		return
-	}
-	defer db.Close()
+func (p *ProcController) GetAvailableProcs(w http.ResponseWriter, r *http.Request) {
+	resp.NewSuccessResponse(w, r, PROCS)
+}
+
+func (p *ProcController) GetProcs(w http.ResponseWriter, r *http.Request) {
+	db := r.Context().Value("db").(*sql.DB)
 
 	query := `SELECT * FROM proc ORDER BY created_at DESC`
 	rows, err := db.Query(query)
 	if err != nil {
 		zap.L().Error("failed to send database query", zap.Error(err))
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "failed to send database query"))
+		resp.NewInternalServerErrorResponse(w, r, "failed to send database query")
 		return
 	}
 	defer rows.Close()
 
-	var procs []Proc
+	procs := []Proc{}
 	for rows.Next() {
 		var proc Proc
 		err = rows.Scan(&proc.ID, &proc.Command, &proc.Args, &proc.IsExecuted, &proc.CreatedAt)
 		if err != nil {
 			zap.L().Error("failed to scan proc", zap.Error(err))
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "failed to scan proc"))
+			resp.NewInternalServerErrorResponse(w, r, "failed to scan proc")
 			return
 		}
 		procs = append(procs, proc)
@@ -77,78 +108,54 @@ func (p *ProcController) GetProc(w http.ResponseWriter, r *http.Request) {
 
 	if err := rows.Err(); err != nil {
 		zap.L().Error("error iterating over proc rows", zap.Error(err))
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "error iterating over proc rows"))
+		resp.NewInternalServerErrorResponse(w, r, "error iterating over proc rows")
 		return
 	}
 
-	render.Status(r, http.StatusOK)
-	render.JSON(w, r, procs)
+	resp.NewSuccessResponse(w, r, procs)
 }
 
 func (p *ProcController) SubmitProc(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", config.GetDBPath())
-	if err != nil {
-		zap.L().Error("failed to open proc database connection", zap.Error(err))
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "failed to open proc database connection"))
-		return
-	}
-	defer db.Close()
-
 	var req ProcSubmitRequest
 	if err := render.Bind(r, &req); err != nil {
 		zap.L().Error("failed to bind request", zap.Error(err))
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, NewErrorResponse(http.StatusBadRequest, err.Error()))
+		resp.NewBadRequestResponse(w, r, err.Error())
 		return
 	}
 
-	query := `INSERT INTO proc (command, args, created_at) VALUES (?, ?, ?)	`
-	result, err := db.Exec(query, req.Command, strings.Join(req.Args, " "), time.Now())
-	if err != nil {
-		zap.L().Error("failed to insert proc", zap.Error(err))
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "failed to insert proc"))
+	if !slices.Contains(PROCS, req.Command) {
+		resp.NewErrorResponse(w, r, http.StatusBadRequest, fmt.Sprintf("invalid proc: %s, wanted one of %s", req.Command, strings.Join(PROCS, ", ")))
 		return
 	}
 
-	// Get the ID of the inserted proc
-	id, err := result.LastInsertId()
-	if err != nil {
-		zap.L().Error("failed to get last insert id", zap.Error(err))
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "failed to get last insert id"))
-		return
-	}
+	switch req.Command {
+	case procs.YtProcName():
+		ytProc, err := procs.NewYtProc(r.Context(), req.Args)
+		if err != nil {
+			zap.L().Error("failed to create yt proc", zap.Error(err))
+			resp.NewInternalServerErrorResponse(w, r, "failed to create yt proc")
+			return
+		}
 
-	proc := Proc{
-		ID:         int(id),
-		Command:    req.Command,
-		Args:       strings.Join(req.Args, " "),
-		IsExecuted: 0,
-		CreatedAt:  time.Now(),
-	}
+		proc := Proc{
+			ID:         ytProc.GetId(),
+			Command:    ytProc.GetCmd(),
+			Args:       strings.Join(ytProc.GetArgs(), " "),
+			IsExecuted: 0,
+			CreatedAt:  time.Now(),
+		}
 
-	render.Status(r, http.StatusOK)
-	render.JSON(w, r, proc)
+		resp.NewCreatedResponse(w, r, proc)
+	}
 }
 
 func (p *ProcController) GetProcResults(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", config.GetDBPath())
-	if err != nil {
-		zap.L().Error("failed to open proc database connection", zap.Error(err))
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "failed to open proc database connection"))
-		return
-	}
-	defer db.Close()
+	db := r.Context().Value("db").(*sql.DB)
 
 	query := `SELECT * FROM proc_results`
 	rows, err := db.Query(query)
 	if err != nil {
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "failed to send database query"))
+		resp.NewInternalServerErrorResponse(w, r, "failed to send database query")
 		return
 	}
 	defer rows.Close()
@@ -159,8 +166,7 @@ func (p *ProcController) GetProcResults(w http.ResponseWriter, r *http.Request) 
 		err = rows.Scan(&result.ID, &result.Stdout, &result.Stderr, &result.CreatedAt)
 		if err != nil {
 			zap.L().Error("failed to scan proc result", zap.Error(err))
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "failed to scan proc result"))
+			resp.NewInternalServerErrorResponse(w, r, "failed to scan proc result")
 			return
 		}
 		results = append(results, result)
@@ -168,37 +174,26 @@ func (p *ProcController) GetProcResults(w http.ResponseWriter, r *http.Request) 
 
 	if err := rows.Err(); err != nil {
 		zap.L().Error("error iterating over proc result rows", zap.Error(err))
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "error iterating over proc result rows"))
+		resp.NewInternalServerErrorResponse(w, r, "error iterating over proc result rows")
 		return
 	}
 
-	render.Status(r, http.StatusOK)
-	render.JSON(w, r, results)
+	resp.NewSuccessResponse(w, r, results)
 }
 
 func (p *ProcController) GetProcResult(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", config.GetDBPath())
-	if err != nil {
-		zap.L().Error("failed to open proc database connection", zap.Error(err))
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "failed to open proc database connection"))
-		return
-	}
-	defer db.Close()
+	db := r.Context().Value("db").(*sql.DB)
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, NewErrorResponse(http.StatusBadRequest, "id is required"))
+		resp.NewBadRequestResponse(w, r, "id is required")
 		return
 	}
 
 	query := `SELECT * FROM proc_results WHERE id = ?`
 	rows, err := db.Query(query, id)
 	if err != nil {
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "failed to send database query"))
+		resp.NewInternalServerErrorResponse(w, r, "failed to send database query")
 		return
 	}
 	defer rows.Close()
@@ -209,8 +204,7 @@ func (p *ProcController) GetProcResult(w http.ResponseWriter, r *http.Request) {
 		err = rows.Scan(&result.ID, &result.Stdout, &result.Stderr, &result.CreatedAt)
 		if err != nil {
 			zap.L().Error("failed to scan proc result", zap.Error(err))
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "failed to scan proc result"))
+			resp.NewInternalServerErrorResponse(w, r, "failed to scan proc result")
 			return
 		}
 		results = append(results, result)
@@ -218,11 +212,9 @@ func (p *ProcController) GetProcResult(w http.ResponseWriter, r *http.Request) {
 
 	if err := rows.Err(); err != nil {
 		zap.L().Error("error iterating over proc result rows", zap.Error(err))
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, NewErrorResponse(http.StatusInternalServerError, "error iterating over proc result rows"))
+		resp.NewInternalServerErrorResponse(w, r, "error iterating over proc result rows")
 		return
 	}
 
-	render.Status(r, http.StatusOK)
-	render.JSON(w, r, results)
+	resp.NewSuccessResponse(w, r, results)
 }
