@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"fsd/internal/resp"
-	"fsd/procs"
+	"fsd/pkg/procs"
 	"net/http"
 	"slices"
 	"strings"
