@@ -7,7 +7,7 @@ FSD is a modular file system daemon that communicates over a message-passing pro
 1. FSD Should be fast
 2. FSD Should be easy
 3. FSD Should be extensible
-4. FSD Should be reproducible.
+4. FSD Should be reproducible
 
 FSD is a safe system for processing results from file changes anywhere on your file system, and giving access to those data points as time-series data. The API endpoints provide historical information, but it's up to the ingestion point to derive meaning from that data. All of the compaction intervals are configurable to ensure that data does not balloon in memory. 
 
