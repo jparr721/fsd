@@ -34,8 +34,6 @@ sudo cp "$SYSTEMD_SERVICE_SRC" "$SYSTEMD_SERVICE_DEST"
 
 # Reload systemd, enable and start the service
 echo "Reloading systemd, enabling, and starting the fsd service"
-# sudo systemctl daemon-reload
-# sudo systemctl enable fsd.service
-# sudo systemctl start fsd.service
+sudo systemctl daemon-reload
 
-echo "Installation complete."
+echo "Installation complete, please start the systemd service with 'sudo systemctl start fsd@user.service'"
