@@ -39,6 +39,7 @@ type ProcResult struct {
 
 var PROCS = []string{
 	procs.YtProcName(),
+	procs.DirProcName(),
 }
 
 func (p *ProcSubmitRequest) bindHelper() error {
@@ -61,9 +62,17 @@ func (p *ProcSubmitRequest) bindHelper() error {
 		if len(channelName) == 0 || channelName[0] == "" {
 			return errors.New("non-empty channel-name is required")
 		}
+	case procs.DirProcName():
+		val, ok := p.Args["dirname"]
+		if !ok {
+			return errors.New("dirname is required")
+		}
 
+		if len(val) == 0 {
+			return errors.New("non-empty dirname required")
+		}
 	default:
-		return errors.New("invalid proc")
+		return errors.New("invalid proc choice")
 	}
 
 	return nil
@@ -132,19 +141,35 @@ func (p *ProcController) SubmitProc(w http.ResponseWriter, r *http.Request) {
 	case procs.YtProcName():
 		ytProc, err := procs.NewYtProc(r.Context(), req.Args)
 		if err != nil {
-			zap.L().Error("failed to create yt proc", zap.Error(err))
+			zap.L().Error("failed to create yt proc", zap.String("proc", procs.YtProcName()), zap.Error(err))
 			resp.NewInternalServerErrorResponse(w, r, "failed to create yt proc")
 			return
 		}
 
 		proc := Proc{
-			ID:         ytProc.GetId(),
+			ID:         ytProc.GetID(),
 			Command:    ytProc.GetCmd(),
 			Args:       strings.Join(ytProc.GetArgs(), " "),
 			IsExecuted: 0,
 			CreatedAt:  time.Now(),
 		}
 
+		resp.NewCreatedResponse(w, r, proc)
+	case procs.DirProcName():
+		dirProc, err := procs.NewDirProc(r.Context(), req.Args["dirname"][0])
+		if err != nil {
+			zap.L().Error("failed to create proc", zap.String("proc", procs.DirProcName()), zap.Error(err))
+			resp.NewInternalServerErrorResponse(w, r, "failed to create proc")
+			return
+		}
+
+		proc := Proc{
+			ID:         dirProc.GetID(),
+			Command:    dirProc.GetCmd(),
+			Args:       dirProc.GetArgs()[0],
+			IsExecuted: 0,
+			CreatedAt:  time.Now(),
+		}
 		resp.NewCreatedResponse(w, r, proc)
 	}
 }

@@ -9,8 +9,8 @@ import (
 )
 
 type Proc interface {
-	// GetId returns the id of the proc
-	GetId() int
+	// GetID returns the id of the proc
+	GetID() int
 
 	// GetCmd returns the command of the proc
 	GetCmd() string

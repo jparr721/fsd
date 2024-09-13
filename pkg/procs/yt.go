@@ -21,7 +21,7 @@ var DEFAULT_FLAGS = map[string][]string{
 }
 
 type YtProc struct {
-	Id int
+	ID int
 
 	// Cmd is the command that the proc uses to execute the yt-dlp command
 	Cmd string
@@ -40,7 +40,7 @@ func YtProcName() string {
 func NewYtProc(ctx context.Context, overrides map[string][]string) (*YtProc, error) {
 	db, err := sql.Open("sqlite3", config.GetDBPath())
 	if err != nil {
-		zap.L().Error("failed to open sqlite database", zap.Error(err))
+		zap.L().Fatal("failed to open sqlite database", zap.Error(err))
 		return nil, err
 	}
 
@@ -82,26 +82,26 @@ func NewYtProc(ctx context.Context, overrides map[string][]string) (*YtProc, err
 		INSERT INTO proc (command, args, is_executed, created_at) VALUES (?, ?, ?, ?)
 	`, cmd, strings.Join(args, " "), 0, time.Now())
 	if err != nil {
-		zap.L().Error("failed to insert into procs", zap.Error(err))
+		zap.L().Error("failed to insert into procs", zap.String("proc", YtProcName()), zap.Error(err))
 		return nil, err
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
-		zap.L().Error("failed to get last insert id", zap.Error(err))
+		zap.L().Error("failed to get last insert id", zap.String("proc", YtProcName()), zap.Error(err))
 		return nil, err
 	}
 
 	return &YtProc{
-		Id:   int(id),
+		ID:   int(id),
 		Cmd:  cmd,
 		Args: args,
 		db:   db,
 	}, nil
 }
 
-func (p *YtProc) GetId() int {
-	return p.Id
+func (p *YtProc) GetID() int {
+	return p.ID
 }
 
 func (p *YtProc) GetCmd() string {
