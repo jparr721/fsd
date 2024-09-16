@@ -156,16 +156,15 @@ func (p *ProcTask) doTask(ctx context.Context) error {
 			return err
 		}
 
-		_, err = p.state.db.Exec(`
+		go func() {
+			_, err = p.state.db.Exec(`
 			UPDATE proc SET is_executed = 1 WHERE id = ?
 		`, id)
 
-		if err != nil {
-			zap.L().Error("failed to update proc table", zap.Error(err))
-			return err
-		}
+			if err != nil {
+				zap.L().Error("failed to update proc table", zap.Error(err))
+			}
 
-		go func() {
 			stdout, stderr, err := p.executeCommand(ctx, command, strings.Split(args, " "))
 			if err != nil {
 				zap.L().Error("failed to execute command", zap.Error(err))
@@ -182,6 +181,10 @@ func (p *ProcTask) doTask(ctx context.Context) error {
 			_, err = stmt.Exec(id, stdout, stderr, createdAt)
 			if err != nil {
 				zap.L().Error("failed to insert into proc_results", zap.Error(err))
+			}
+
+			if err := stmt.Close(); err != nil {
+				zap.L().Error("failed to close statement", zap.Error(err))
 			}
 		}()
 	}
