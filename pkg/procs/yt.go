@@ -16,7 +16,6 @@ import (
 
 var DEFAULT_FLAGS = map[string][]string{
 	"playlist-end":        {"30"},
-	"sleep-interval":      {"5"},
 	"merge-output-format": {"mkv"},
 }
 

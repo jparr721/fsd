@@ -156,6 +156,15 @@ func (p *ProcTask) doTask(ctx context.Context) error {
 			return err
 		}
 
+		_, err = p.state.db.Exec(`
+			UPDATE proc SET is_executed = 1 WHERE id = ?
+		`, id)
+
+		if err != nil {
+			zap.L().Error("failed to update proc table", zap.Error(err))
+			return err
+		}
+
 		go func() {
 			stdout, stderr, err := p.executeCommand(ctx, command, strings.Split(args, " "))
 			if err != nil {
@@ -174,15 +183,6 @@ func (p *ProcTask) doTask(ctx context.Context) error {
 			if err != nil {
 				zap.L().Error("failed to insert into proc_results", zap.Error(err))
 			}
-
-			_, err = p.state.db.Exec(`
-				UPDATE proc SET is_executed = 1 WHERE id = ?
-			`, id)
-
-			if err != nil {
-				zap.L().Error("failed to update proc table", zap.Error(err))
-				return
-			}
 		}()
 	}
 
@@ -190,7 +190,7 @@ func (p *ProcTask) doTask(ctx context.Context) error {
 }
 
 func (p *ProcTask) executeCommand(ctx context.Context, command string, args []string) (string, string, error) {
-	zap.L().Debug("executing command", zap.String("command", command), zap.Any("args", args))
+	zap.L().Info("executing command", zap.String("command", command), zap.Any("args", args))
 	cmd := exec.CommandContext(ctx, command, args...)
 
 	var stdout, stderr bytes.Buffer
