@@ -1,0 +1,34 @@
+[package]
+name = "fsd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.89"
+axum = "0.7.8"
+async-broadcast = "0.7"
+async-channel = "2"
+async-lock = "2"
+async-trait = "0.1"
+bincode = "1"
+bytes = { version = "1.8.0", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+tokio = { version = "1.41", default-features = false, features = [
+    "macros",
+    "net",
+    "parking_lot",
+    "rt-multi-thread",
+    "sync",
+    "time",
+    "tracing",
+    "signal",
+] }
+futures = { version = "0.3", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1.0" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "json"] }
+tower-http = { version = "0.6.1", features = ["trace"] }
+grep = "0.3.2"
+globset = "0.4.15"
+ignore = "0.4.23"
